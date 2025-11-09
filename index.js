@@ -217,15 +217,22 @@ app.get("/status/:predictionId", async (req, res) => {
     
     predictions.set(predictionId, localData);
 
-    res.json({
+    // 构建响应，确保包含musicURL字段
+    const response = {
       predictionId,
       status: prediction.status,
       createdAt: localData.createdAt,
       updatedAt: localData.updatedAt,
-      ...(localData.result && { result: localData.result }),
       ...(localData.error && { error: localData.error }),
       logs: prediction.logs || []
-    });
+    };
+    
+    // 如果有结果，添加musicURL字段
+    if (localData.result && localData.result.audioUrl) {
+      response.musicURL = localData.result.audioUrl;
+    }
+    
+    res.json(response);
   } catch (err) {
     console.error("查询状态错误:", err);
     res.status(500).json({ error: err.message });
