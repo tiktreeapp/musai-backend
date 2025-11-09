@@ -4,6 +4,9 @@ import fetch from "node-fetch";
 import FormData from "form-data";
 import dotenv from "dotenv";
 import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
 // 加载环境变量
 dotenv.config();
@@ -11,8 +14,27 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// 配置multer用于文件上传
-const upload = multer({ storage: multer.memoryStorage() });
+// 获取当前目录路径
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 创建本地缓存目录
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// 配置multer用于文件上传（保存到本地）
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
 
 // 初始化Replicate客户端
 const replicate = new Replicate({
@@ -28,9 +50,14 @@ const predictions = new Map();
  */
 app.post("/generate", async (req, res) => {
   try {
+    console.log("🔍 Generate请求体:", JSON.stringify(req.body, null, 2));
+    
     const { prompt, lyrics, imageUrl } = req.body;
     
+    console.log("🔍 解析参数 - prompt:", prompt, "lyrics:", lyrics, "imageUrl:", imageUrl);
+    
     if (!prompt) {
+      console.log("❌ 缺少prompt参数");
       return res.status(400).json({ error: "缺少必需的prompt参数" });
     }
 
@@ -95,27 +122,22 @@ app.get("/status/:predictionId", async (req, res) => {
       const audioUrl = prediction.output?.[0]?.url || prediction.output?.[0];
       
       if (audioUrl && !localData.result) {
-        // 下载音频文件
+        // 下载音频文件到本地
         const audioRes = await fetch(audioUrl);
         const buffer = await audioRes.arrayBuffer();
-
-        // 上传到 Cloudinary
-        const formData = new FormData();
-        formData.append("file", Buffer.from(buffer), { filename: "music.mp3" });
-        formData.append("upload_preset", process.env.CLOUDINARY_UPLOAD_PRESET);
-
-        const uploadRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/auto/upload`,
-          { method: "POST", body: formData }
-        );
-
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          localData.result = {
-            audioUrl: uploadData.secure_url,
-            originalUrl: audioUrl
-          };
-        }
+        
+        // 保存到本地
+        const audioFilename = `music-${predictionId}.mp3`;
+        const audioPath = path.join(uploadsDir, audioFilename);
+        fs.writeFileSync(audioPath, Buffer.from(buffer));
+        
+        console.log("🎵 音频文件保存到本地:", audioPath);
+        
+        localData.result = {
+          audioUrl: `/uploads/${audioFilename}`,
+          originalUrl: audioUrl,
+          localPath: audioPath
+        };
       }
     }
     
@@ -143,7 +165,7 @@ app.get("/status/:predictionId", async (req, res) => {
 
 /**
  * POST /upload - 上传图片
- * 接收图片文件，返回图片URL
+ * 接收图片文件，返回本地图片URL
  */
 app.post("/upload", upload.single("image"), async (req, res) => {
   try {
@@ -151,36 +173,26 @@ app.post("/upload", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "没有上传图片文件" });
     }
 
-    // 上传到 Cloudinary
-    const formData = new FormData();
-    formData.append("file", req.file.buffer, { 
-      filename: req.file.originalname,
-      contentType: req.file.mimetype 
-    });
-    formData.append("upload_preset", process.env.CLOUDINARY_UPLOAD_PRESET);
-
-    const uploadRes = await fetch(
-      `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/image/upload`,
-      { method: "POST", body: formData }
-    );
-
-    if (!uploadRes.ok) {
-      throw new Error(`Cloudinary 上传失败: ${uploadRes.statusText}`);
-    }
-
-    const uploadData = await uploadRes.json();
-
+    console.log("📷 图片上传成功:", req.file.filename);
+    
+    // 返回本地文件URL（相对于服务器根目录）
+    const imageUrl = `/uploads/${req.file.filename}`;
+    
     res.json({
-      imageUrl: uploadData.secure_url,
-      publicId: uploadData.public_id,
-      format: uploadData.format,
-      size: uploadData.bytes
+      imageUrl: imageUrl,
+      localPath: req.file.path,
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
     });
   } catch (err) {
     console.error("上传图片错误:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// 静态文件服务 - 提供本地图片访问
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 健康检查端点
 app.get("/health", (req, res) => {
