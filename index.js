@@ -61,7 +61,7 @@ app.post("/generate", async (req, res) => {
       sample_rate = 44100,
       audio_format = "mp3",
       // 前端发送的格式参数
-      input,
+      input: frontendInput,
       style,
       mode,
       speed,
@@ -74,9 +74,9 @@ app.post("/generate", async (req, res) => {
     let finalPrompt = prompt;
     
     // 如果前端使用的是分离参数格式
-    if (!prompt && !lyrics && input) {
+    if (!prompt && !lyrics && frontendInput) {
       // 将input作为lyrics
-      finalLyrics = input;
+      finalLyrics = frontendInput;
       
       // 组合其他参数为prompt
       const promptParts = [];
