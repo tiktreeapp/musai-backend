@@ -242,7 +242,14 @@ app.get("/status/:predictionId", async (req, res) => {
     
     // 如果有结果，添加musicURL字段
     if (localData.result && localData.result.audioUrl) {
+      console.log("🔍 准备添加musicURL:", localData.result.audioUrl);
+      console.log("🔍 musicURL类型:", typeof localData.result.audioUrl);
+      console.log("🔍 musicURL长度:", localData.result.audioUrl.length);
       response.musicURL = localData.result.audioUrl;
+      console.log("🔍 响应中的musicURL:", response.musicURL);
+    } else {
+      console.log("🔍 没有找到有效的audioUrl");
+      console.log("🔍 localData.result:", localData.result);
     }
     
     res.json(response);
