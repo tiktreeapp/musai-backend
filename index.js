@@ -52,11 +52,49 @@ app.post("/generate", async (req, res) => {
   try {
     console.log("🔍 Generate请求体:", JSON.stringify(req.body, null, 2));
     
-    const { prompt, lyrics, imageUrl } = req.body;
+    const { 
+      // 官方格式参数
+      prompt, 
+      lyrics, 
+      imageUrl,
+      bitrate = 256000,
+      sample_rate = 44100,
+      audio_format = "mp3",
+      // 前端发送的格式参数
+      input,
+      style,
+      mode,
+      speed,
+      instrumentation,
+      vocal
+    } = req.body;
     
-    console.log("🔍 解析参数 - prompt:", prompt, "lyrics:", lyrics, "imageUrl:", imageUrl);
+    // 处理前端发送的参数格式
+    let finalLyrics = lyrics;
+    let finalPrompt = prompt;
     
-    if (!prompt) {
+    // 如果前端使用的是分离参数格式
+    if (!prompt && !lyrics && input) {
+      // 将input作为lyrics
+      finalLyrics = input;
+      
+      // 组合其他参数为prompt
+      const promptParts = [];
+      if (style) promptParts.push(`风格: ${style}`);
+      if (mode) promptParts.push(`情绪: ${mode}`);
+      if (speed) promptParts.push(`速度: ${speed}`);
+      if (instrumentation) promptParts.push(`乐器: ${instrumentation}`);
+      if (vocal) promptParts.push(`人声: ${vocal}`);
+      
+      finalPrompt = promptParts.join(", ");
+      
+      console.log("🔍 参数转换 - input -> lyrics:", finalLyrics);
+      console.log("🔍 参数转换 - 组合prompt:", finalPrompt);
+    }
+    
+    console.log("🔍 最终参数 - prompt:", finalPrompt, "lyrics:", finalLyrics, "imageUrl:", imageUrl);
+    
+    if (!finalPrompt) {
       console.log("❌ 缺少prompt参数");
       return res.status(400).json({ error: "缺少必需的prompt参数" });
     }
@@ -64,9 +102,12 @@ app.post("/generate", async (req, res) => {
     // 调用 Replicate API 生成音频
     const prediction = await replicate.run("minimax/music-1.5", {
       input: { 
-        prompt,
-        ...(lyrics && { lyrics }),
-        ...(imageUrl && { image_url: imageUrl })
+        prompt: finalPrompt,
+        ...(finalLyrics && { lyrics: finalLyrics }),
+        ...(imageUrl && { image_url: imageUrl }),
+        bitrate,
+        sample_rate,
+        audio_format
       },
     });
     
