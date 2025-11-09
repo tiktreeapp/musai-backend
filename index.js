@@ -163,7 +163,14 @@ app.get("/status/:predictionId", async (req, res) => {
     
     // 如果完成，处理结果
     if (prediction.status === "succeeded" && prediction.output) {
-      const audioUrl = prediction.output?.[0]?.url || prediction.output?.[0];
+      // 根据官方API示例，output是一个对象，可以使用url()方法
+      let audioUrl;
+      try {
+        audioUrl = prediction.output.url();
+      } catch (err) {
+        // 如果url()方法不可用，尝试其他方式
+        audioUrl = prediction.output?.[0]?.url || prediction.output?.[0];
+      }
       
       if (audioUrl && !localData.result) {
         // 下载音频文件到本地
