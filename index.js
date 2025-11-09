@@ -168,12 +168,25 @@ app.get("/status/:predictionId", async (req, res) => {
     
     // 如果完成，处理结果
     if (prediction.status === "succeeded" && prediction.output) {
-      // 根据官方API示例，output是一个对象，可以使用url()方法
+      console.log("🔍 Replicate输出:", JSON.stringify(prediction.output, null, 2));
+      
+      // Replicate返回的output应该是直接的URL字符串
       let audioUrl;
-      try {
-        audioUrl = prediction.output.url();
-      } catch (err) {
-        // 如果url()方法不可用，尝试其他方式
+      
+      // 如果output是字符串，直接使用
+      if (typeof prediction.output === "string") {
+        audioUrl = prediction.output;
+      }
+      // 如果output是数组，取第一个元素
+      else if (Array.isArray(prediction.output) && prediction.output.length > 0) {
+        audioUrl = prediction.output[0];
+      }
+      // 如果output是对象，尝试获取url属性
+      else if (prediction.output.url) {
+        audioUrl = prediction.output.url;
+      }
+      // 最后尝试其他可能的格式
+      else {
         audioUrl = prediction.output?.[0]?.url || prediction.output?.[0];
       }
       
