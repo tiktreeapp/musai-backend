@@ -111,8 +111,12 @@ app.post("/generate", async (req, res) => {
     
     console.log("🔍 Replicate SDK输入:", JSON.stringify(input, null, 2));
     
-    const prediction = await replicate.run("minimax/music-1.5", { input });
-    console.log("✅ Replicate SDK响应:", JSON.stringify(prediction, null, 2));
+    // 使用异步方式创建prediction
+    const prediction = await replicate.predictions.create({
+      version: "minimax/music-1.5",
+      input: input
+    });
+    console.log("✅ Replicate预测创建成功:", JSON.stringify(prediction, null, 2));
     
     // 存储预测信息
     predictions.set(prediction.id, {
