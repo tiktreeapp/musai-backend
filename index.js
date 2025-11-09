@@ -157,6 +157,7 @@ app.get("/status/:predictionId", async (req, res) => {
     try {
       prediction = await replicate.predictions.get(predictionId);
     } catch (err) {
+      console.error("获取Replicate预测状态失败:", err);
       return res.status(404).json({ error: "预测ID不存在" });
     }
 
@@ -177,22 +178,35 @@ app.get("/status/:predictionId", async (req, res) => {
       }
       
       if (audioUrl && !localData.result) {
-        // 下载音频文件到本地
-        const audioRes = await fetch(audioUrl);
-        const buffer = await audioRes.arrayBuffer();
-        
-        // 保存到本地
-        const audioFilename = `music-${predictionId}.mp3`;
-        const audioPath = path.join(uploadsDir, audioFilename);
-        fs.writeFileSync(audioPath, Buffer.from(buffer));
-        
-        console.log("🎵 音频文件保存到本地:", audioPath);
-        
-        localData.result = {
-          audioUrl: `/uploads/${audioFilename}`,
-          originalUrl: audioUrl,
-          localPath: audioPath
-        };
+        try {
+          // 下载音频文件到本地
+          const audioRes = await fetch(audioUrl);
+          if (!audioRes.ok) {
+            throw new Error(`下载音频失败: ${audioRes.status}`);
+          }
+          const buffer = await audioRes.arrayBuffer();
+          
+          // 保存到本地
+          const audioFilename = `music-${predictionId}.mp3`;
+          const audioPath = path.join(uploadsDir, audioFilename);
+          fs.writeFileSync(audioPath, Buffer.from(buffer));
+          
+          console.log("🎵 音频文件保存到本地:", audioPath);
+          
+          localData.result = {
+            audioUrl: `/uploads/${audioFilename}`,
+            originalUrl: audioUrl,
+            localPath: audioPath
+          };
+        } catch (downloadErr) {
+          console.error("下载或保存音频文件失败:", downloadErr);
+          // 即使下载失败，也返回原始URL
+          localData.result = {
+            audioUrl: audioUrl,
+            originalUrl: audioUrl,
+            error: "本地缓存失败，使用原始URL"
+          };
+        }
       }
     }
     
