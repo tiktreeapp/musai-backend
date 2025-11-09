@@ -94,44 +94,30 @@ app.post("/generate", async (req, res) => {
     
     console.log("🔍 最终参数 - prompt:", finalPrompt, "lyrics:", finalLyrics, "imageUrl:", imageUrl);
     
-    // 构建Replicate API请求体
-    const replicateRequestBody = {
-      version: "minimax/music-1.5",
-      input: {
-        ...(finalLyrics && { lyrics: finalLyrics }),
-        ...(finalPrompt && { prompt: finalPrompt }),
-        ...(imageUrl && { image_url: imageUrl }),
-        bitrate,
-        sample_rate,
-        audio_format
-      }
+    if (!finalPrompt) {
+      console.log("❌ 缺少prompt参数");
+      return res.status(400).json({ error: "缺少必需的prompt参数" });
+    }
+
+    // 使用Replicate SDK调用
+    const input = {
+      ...(finalLyrics && { lyrics: finalLyrics }),
+      ...(finalPrompt && { prompt: finalPrompt }),
+      ...(imageUrl && { image_url: imageUrl }),
+      bitrate,
+      sample_rate,
+      audio_format
     };
     
-    console.log("🔍 Replicate API请求体:", JSON.stringify(replicateRequestBody, null, 2));
-
-    // 调用 Replicate REST API
-    const replicateResponse = await fetch("https://api.replicate.com/v1/predictions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Token ${process.env.REPLICATE_API_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(replicateRequestBody)
-    });
+    console.log("🔍 Replicate SDK输入:", JSON.stringify(input, null, 2));
     
-    if (!replicateResponse.ok) {
-      const errorText = await replicateResponse.text();
-      console.error("❌ Replicate API错误:", replicateResponse.status, errorText);
-      throw new Error(`Replicate API错误: ${replicateResponse.status} - ${errorText}`);
-    }
-    
-    const predictionData = await replicateResponse.json();
-    console.log("✅ Replicate响应:", JSON.stringify(predictionData, null, 2));
+    const prediction = await replicate.run("minimax/music-1.5", { input });
+    console.log("✅ Replicate SDK响应:", JSON.stringify(prediction, null, 2));
     
     // 存储预测信息
-    predictions.set(predictionData.id, {
-      id: predictionData.id,
-      status: predictionData.status,
+    predictions.set(prediction.id, {
+      id: prediction.id,
+      status: prediction.status,
       createdAt: new Date().toISOString(),
       prompt: finalPrompt,
       lyrics: finalLyrics,
@@ -140,8 +126,8 @@ app.post("/generate", async (req, res) => {
     });
 
     res.json({
-      predictionId: predictionData.id,
-      status: predictionData.status,
+      predictionId: prediction.id,
+      status: prediction.status,
       message: "音乐生成任务已提交"
     });
   } catch (err) {
@@ -162,22 +148,10 @@ app.get("/status/:predictionId", async (req, res) => {
       return res.status(400).json({ error: "缺少predictionId参数" });
     }
 
-    // 从Replicate REST API获取最新状态
+    // 从Replicate SDK获取最新状态
     let prediction;
     try {
-      const statusResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Token ${process.env.REPLICATE_API_TOKEN}`,
-          "Content-Type": "application/json"
-        }
-      });
-      
-      if (!statusResponse.ok) {
-        throw new Error(`获取状态失败: ${statusResponse.status}`);
-      }
-      
-      prediction = await statusResponse.json();
+      prediction = await replicate.predictions.get(predictionId);
     } catch (err) {
       return res.status(404).json({ error: "预测ID不存在" });
     }
